@@ -14,11 +14,16 @@
   Display detailed output.
 .PARAMETER SkipCompanion
   Skip building the VSCode companion extension.
+.PARAMETER SkipClient
+  Skip building the Delphi client.
 .PARAMETER DelphiVersions
   Any number of Delphi package versions, optionally specifying an installation path.
 .EXAMPLE
   build.ps1 280
   Build and package all DelphiLint projects using a standard Delphi 11 Alexandria installation.
+.EXAMPLE
+  build.ps1 -SkipClient
+  Build and package all DelphiLint projects except the Delphi client.
 .EXAMPLE
   build.ps1 "290=C:\Custom Path\Embarcadero\23.0"
   Build and package all DelphiLint projects using a non-standard Delphi 12 Athens installation.
@@ -27,6 +32,7 @@
 param(
   [switch]$ShowOutput,
   [switch]$SkipCompanion,
+  [switch]$SkipClient,
   [Parameter(ValueFromRemainingArguments)]
   [string[]]$DelphiVersions
 )
@@ -119,7 +125,11 @@ if ($DelphiInstalls.Length -eq 0) {
 }
 
 $Version = Get-Version
+Write-Host "Get-Version: $Version"
 $StaticVersion = $Version -replace "\+dev.*$", "+dev"
+Write-Host "StaticVersion: $StaticVersion"
+$GitHash = (git rev-parse --short HEAD)  # If you need to keep the git hash
+Write-Host "GitHash: $GitHash"
 
 $ServerJar = Join-Path $PSScriptRoot "../server/delphilint-server/target/delphilint-server-$Version.jar"
 $CompanionVsix = Join-Path $PSScriptRoot "../companion/delphilint-vscode/delphilint-vscode-$StaticVersion.vsix"
@@ -289,19 +299,28 @@ $Projects = @(
   @{
     "Name"          = "Build client"
     "Prerequisite"  = {
-      Assert-ClientVersion -Version $Version
-      $PackagingConfigs | ForEach-Object { Assert-Exists $_.Delphi.InstallationPath }
+      if (-not $SkipClient) {
+        Assert-ClientVersion -Version $Version
+        $PackagingConfigs | ForEach-Object { Assert-Exists $_.Delphi.InstallationPath }
+      }
     }
     "Build"         = {
-      $PackagingConfigs | ForEach-Object {
-        Invoke-ClientCompile -Config $_
-        $_.Artifacts.Add($_.GetInputBplPath(), $_.GetOutputBplName())
-        Write-Host "Built for Delphi $($_.Delphi.Version.Name) ($($_.Delphi.Version.PackageVersion))."
+      if (-not $SkipClient) {
+        $PackagingConfigs | ForEach-Object {
+          Invoke-ClientCompile -Config $_
+          $_.Artifacts.Add($_.GetInputBplPath(), $_.GetOutputBplName())
+          Write-Host "Built for Delphi $($_.Delphi.Version.Name) ($($_.Delphi.Version.PackageVersion))."
+        }
+      }
+      else {
+        Write-Host -ForegroundColor Yellow "-SkipClient flag passed - skipping Delphi client build."
       }
     }
     "Postrequisite" = {
-      $PackagingConfigs | ForEach-Object {
-        Assert-Exists $_.GetInputBplPath()
+      if (-not $SkipClient) {
+        $PackagingConfigs | ForEach-Object {
+          Assert-Exists $_.GetInputBplPath()
+        }
       }
     }
   },
