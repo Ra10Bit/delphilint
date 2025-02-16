@@ -120,8 +120,13 @@ $DelphiInstalls = $DelphiVersions `
 }
 
 if ($DelphiInstalls.Length -eq 0) {
-  Write-Problem "Please supply at least one version to build for."
-  Exit
+  if (-not $SkipClient) {
+    Write-Problem "Please supply at least one version to build for."
+    Exit
+  }
+  else {
+    Write-Host "No Delphi versions specified, skipping client build."
+  }
 }
 
 $Version = Get-Version
