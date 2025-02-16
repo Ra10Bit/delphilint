@@ -32,7 +32,7 @@
 param(
   [switch]$ShowOutput,
   [switch]$SkipCompanion,
-  [switch]$SkipClient = ($args.Count -eq 0), # пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ SkipClient пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+  [switch]$SkipClient = ($args.Count -eq 0), # Установка SkipClient по умолчанию если нет параметров
   [Parameter(ValueFromRemainingArguments)]
   [string[]]$DelphiVersions
 )
@@ -135,9 +135,12 @@ $StaticVersion = $Version -replace "\+dev.*$", "+dev"
 Write-Host "StaticVersion: $StaticVersion"
 $GitHash = (git rev-parse --short HEAD)  # If you need to keep the git hash
 Write-Host "GitHash: $GitHash"
+# Удаляем git хеш из версии, оставляя только основную версию
+$CleanVersion = $Version -replace "\.[a-f0-9]{7}$", ""
+Write-Host "CleanVersion: $CleanVersion"
 
 $ServerJar = Join-Path $PSScriptRoot "../server/delphilint-server/target/delphilint-server-$Version.jar"
-$CompanionVsix = Join-Path $PSScriptRoot "../companion/delphilint-vscode/delphilint-vscode-$StaticVersion.vsix"
+$CompanionVsix = Join-Path $PSScriptRoot "../companion/delphilint-vscode/delphilint-vscode-$CleanVersion.vsix"
 
 $TargetDir = Join-Path $PSScriptRoot "../target"
 
@@ -207,10 +210,34 @@ function Invoke-ServerCompile() {
 function Invoke-VscCompanionCompile {
   Push-Location (Join-Path $PSScriptRoot ..\companion\delphilint-vscode)
   try {
-    & npm install
+    # Clear npm cache first
+    & npm cache clean --force
+        
+    # Delete existing node_modules and package-lock.json
+    if (Test-Path node_modules) {
+      Remove-Item -Recurse -Force node_modules
+    }
+    if (Test-Path package-lock.json) {
+      Remove-Item -Force package-lock.json
+    }
+
+    # Backup original package.json
+    Copy-Item package.json package.json.bak -Force
+
+    # Update version in package.json to use clean version
+    $packageJson = Get-Content "package.json" | ConvertFrom-Json
+    $packageJson.version = $CleanVersion  # This should be "1.3.0" etc.
+    $packageJson | ConvertTo-Json -Depth 100 | Set-Content "package.json"
+
+    & npm install --no-package-lock
     Assert-ExitCode "VS Code companion npm install"
-    & npx -y @vscode/vsce package --skip-license
+      
+    # Package without git info
+    & npx -y @vscode/vsce package --skip-license --no-git-tag-version
     Assert-ExitCode "VS Code companion build"
+
+    # Restore original package.json
+    Move-Item package.json.bak package.json -Force
   }
   finally {
     Pop-Location
