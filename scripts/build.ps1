@@ -94,23 +94,24 @@ class PackagingConfig {
 }
 
 $DelphiInstalls = $DelphiVersions `
-  | ForEach-Object { ,($_ -split '=') } `
-  | Where-Object {
-      $SupportedVersion = $DelphiVersionMap.ContainsKey($_[0])
+| ForEach-Object { , ($_ -split '=') } `
+| Where-Object {
+  $SupportedVersion = $DelphiVersionMap.ContainsKey($_[0])
 
-      if (-not $SupportedVersion) {
-        Write-Host "Delphi version '$($_[0])' is not compatible with DelphiLint, ignoring."
-      }
+  if (-not $SupportedVersion) {
+    Write-Host "Delphi version '$($_[0])' is not compatible with DelphiLint, ignoring."
+  }
 
-      return $SupportedVersion
-    } `
-  | ForEach-Object {
-      if ($_.Length -gt 1) {
-        return [DelphiInstall]::new($_[0], $_[1])
-      } else {
-        return [DelphiInstall]::new($_[0])
-      }
-    }
+  return $SupportedVersion
+} `
+| ForEach-Object {
+  if ($_.Length -gt 1) {
+    return [DelphiInstall]::new($_[0], $_[1])
+  }
+  else {
+    return [DelphiInstall]::new($_[0])
+  }
+}
 
 if ($DelphiInstalls.Length -eq 0) {
   Write-Problem "Please supply at least one version to build for."
@@ -118,7 +119,7 @@ if ($DelphiInstalls.Length -eq 0) {
 }
 
 $Version = Get-Version
-$StaticVersion = $Version -replace "\+dev.*$","+dev"
+$StaticVersion = $Version -replace "\+dev.*$", "+dev"
 
 $ServerJar = Join-Path $PSScriptRoot "../server/delphilint-server/target/delphilint-server-$Version.jar"
 $CompanionVsix = Join-Path $PSScriptRoot "../companion/delphilint-vscode/delphilint-vscode-$StaticVersion.vsix"
@@ -128,7 +129,8 @@ $TargetDir = Join-Path $PSScriptRoot "../target"
 function Assert-Exists([string]$Path) {
   if (Test-Path $Path) {
     Write-Status -Status Success "$(Resolve-PathToRoot $Path) exists."
-  } else {
+  }
+  else {
     Write-Status -Status Problem "$Path does not exist."
     Exit
   }
@@ -153,14 +155,15 @@ function Assert-ClientVersion([string]$Version, [string]$Message) {
 
   if (Test-ClientVersion -Path $Path -Version $Version) {
     Write-Status -Status Success "Version is set correctly as $Version in dlversion.inc."
-  } else {
+  }
+  else {
     Write-Status -Status Problem "Version is not set correctly as $Version in dlversion.inc."
     Exit
   }
 }
 
 function Assert-ExitCode([string]$Desc) {
-  if($LASTEXITCODE) {
+  if ($LASTEXITCODE) {
     throw "$Desc failed with code $LASTEXITCODE"
   }
 }
@@ -219,7 +222,7 @@ function New-SetupScript([string]$Path, [PackagingConfig]$Config) {
 
   Copy-Item (Join-Path $PSScriptRoot TEMPLATE_install.ps1) $Path
   $Content = Get-Content -Raw $Path
-  $Content = $Content -replace "##\{STARTREPLACE\}##(.|\n)*##\{ENDREPLACE\}##",$MacroContents
+  $Content = $Content -replace "##\{STARTREPLACE\}##(.|\n)*##\{ENDREPLACE\}##", $MacroContents
   Set-Content -Path $Path -Value $Content
 }
 
@@ -252,13 +255,15 @@ function Invoke-Project([hashtable]$Project) {
 
     if ($ShowOutput) {
       & $Project.Build | ForEach-Object { Write-Host $_ }
-    } else {
+    }
+    else {
       $Output = (& $Project.Build)
     }
 
     if ($LASTEXITCODE -eq 0) {
       Write-Host -ForegroundColor Green "Succeeded" -NoNewline
-    } else {
+    }
+    else {
       $Output | ForEach-Object { Write-Host $_ }
       Write-Problem "Failed."
       Exit
@@ -282,12 +287,12 @@ $PackagingConfigs = $DelphiInstalls | ForEach-Object { [PackagingConfig]::new($_
 
 $Projects = @(
   @{
-    "Name" = "Build client"
-    "Prerequisite" = {
+    "Name"          = "Build client"
+    "Prerequisite"  = {
       Assert-ClientVersion -Version $Version
       $PackagingConfigs | ForEach-Object { Assert-Exists $_.Delphi.InstallationPath }
     }
-    "Build" = {
+    "Build"         = {
       $PackagingConfigs | ForEach-Object {
         Invoke-ClientCompile -Config $_
         $_.Artifacts.Add($_.GetInputBplPath(), $_.GetOutputBplName())
@@ -301,8 +306,8 @@ $Projects = @(
     }
   },
   @{
-    "Name" = "Build server"
-    "Build" = {
+    "Name"          = "Build server"
+    "Build"         = {
       Invoke-ServerCompile
       $StandaloneArtifacts.Add($ServerJar, "delphilint-server-$Version.jar");
       $CommonArtifacts.Add($ServerJar, "delphilint-server-$Version.jar");
@@ -312,11 +317,12 @@ $Projects = @(
     }
   },
   @{
-    "Name" = "Build VS Code companion"
-    "Build" = {
+    "Name"          = "Build VS Code companion"
+    "Build"         = {
       if ($SkipCompanion) {
         Write-Host -ForegroundColor Yellow "-SkipCompanion flag passed - skipping build."
-      } else {
+      }
+      else {
         Invoke-VscCompanionCompile
         $StandaloneArtifacts.Add($CompanionVsix, "delphilint-vscode-$StaticVersion.vsix");
       }
@@ -328,8 +334,8 @@ $Projects = @(
     }
   },
   @{
-    "Name" = "Collate build artifacts"
-    "Build" = {
+    "Name"          = "Collate build artifacts"
+    "Build"         = {
       Clear-TargetFolder
       $StandaloneArtifacts.GetEnumerator() | ForEach-Object {
         Copy-Item -Path $_.Key -Destination (Join-Path $TargetDir $_.Value)
@@ -357,8 +363,8 @@ $Projects = @(
     }
   },
   @{
-    "Name" = "Zip build artifacts"
-    "Build" = {
+    "Name"          = "Zip build artifacts"
+    "Build"         = {
       $PackagingConfigs | ForEach-Object {
         $PackageFolder = Join-Path $TargetDir $_.GetPackageFolderName()
         $ZippedPackage = "${PackageFolder}.zip"
