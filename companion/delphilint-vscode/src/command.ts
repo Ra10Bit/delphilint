@@ -17,6 +17,9 @@
  */
 import * as vscode from "vscode";
 import * as path from "path";
+import * as fs from "fs";
+import * as os from "os";
+import { spawn } from "child_process";
 import { LintServer, RequestAnalyze } from "./server";
 import * as display from "./display";
 import * as settings from "./settings";
@@ -39,7 +42,79 @@ function isFileDelphiSource(filePath: string): boolean {
   return DELPHI_SOURCE_EXTENSIONS.includes(path.extname(filePath));
 }
 
-function isFileInProject(filePath: string, baseDir: string): boolean {
+function isPathAbsolute(filePath: string): boolean {
+  if (!filePath) {
+    return false;
+  }
+  if (os.platform() === "linux") {
+    return filePath.startsWith("/") || filePath.startsWith("~");
+  } else {
+    // Windows path check
+    return /^[A-Za-z]:/.test(filePath) || filePath.startsWith("\\\\");
+  }
+}
+
+function isFileInSearchPath(filePath: string, dprojPath: string): boolean {
+  try {
+    // Normalize all paths
+    const normalizedFilePath = path.dirname(path.resolve(filePath));
+    const normalizedDprojPath = path.dirname(path.resolve(dprojPath));
+    // First check relative to dproj path
+    if (
+      normalizedFilePath
+        .toLowerCase()
+        .startsWith(normalizedDprojPath.toLowerCase())
+    ) {
+      return true;
+    }
+    // Read the dproj file content
+    const fileContent = fs.readFileSync(dprojPath, "utf8");
+    // Search for DCC_UnitSearchPath using regex
+    const match = /<DCC_UnitSearchPath>(.*?)<\/DCC_UnitSearchPath>/s.exec(
+      fileContent
+    );
+    if (!match) {
+      return false;
+    }
+    const searchPaths = match[1];
+    // Split paths by semicolon
+    const paths = searchPaths.split(";").filter((p) => p.trim());
+    // Check each path
+    for (const searchPath of paths) {
+      if (!searchPath) {
+        continue;
+      }
+      // Handle relative paths from dproj
+      let fullPath = searchPath;
+      if (!isPathAbsolute(searchPath)) {
+        fullPath = path.join(normalizedDprojPath, searchPath);
+      }
+      // Normalize search path
+      const normalizedSearchPath = path.resolve(fullPath) + path.sep;
+      // Check if file path starts with search path (case-insensitive)
+      if (
+        normalizedFilePath
+          .toLowerCase()
+          .startsWith(normalizedSearchPath.toLowerCase())
+      ) {
+        return true;
+      }
+    }
+    return false;
+  } catch (error) {
+    display.showError(`Error in isFileInSearchPath: ${error}`);
+    return false;
+  }
+}
+
+function isFileInProject(
+  filePath: string,
+  baseDir: string,
+  projectFile?: string
+): boolean {
+  if (projectFile) {
+    return isFileInSearchPath(filePath, projectFile);
+  }
   return path
     .normalize(filePath)
     .toLowerCase()
@@ -71,19 +146,20 @@ function getDefaultBaseDir(inputFiles: string[]): string {
 function constructInputFiles(
   inputFiles: string[],
   baseDir: string,
-  dproj?: string
+  projectFile?: string
 ): string[] | undefined {
   if (inputFiles.length === 0) {
     return undefined;
   }
 
   const sourceFiles = inputFiles.filter(
-    (file) => isFileDelphiSource(file) && isFileInProject(file, baseDir)
+    (file) =>
+      isFileDelphiSource(file) && isFileInProject(file, baseDir, projectFile)
   );
 
   if (sourceFiles.length > 0) {
-    if (dproj) {
-      return [...sourceFiles, dproj];
+    if (projectFile) {
+      return [...sourceFiles, projectFile];
     } else {
       return sourceFiles;
     }
@@ -173,6 +249,47 @@ async function selectProjectFile(
   return projectChoice || null;
 }
 
+async function convertDofToDproj(dofPath: string): Promise<string | null> {
+  const dof2dprojPath = path.join(settings.SETTINGS_DIR, "dof2dproj.exe");
+  if (!fs.existsSync(dof2dprojPath)) {
+    display.showError(
+      `Conversion utility dof2dproj.exe not found at ${dof2dprojPath}`
+    );
+    return null;
+  }
+  const dprojPath = dofPath.replace(".dof", ".dproj");
+  return new Promise((resolve) => {
+    const process = spawn(dof2dprojPath, ["--force", `"${dofPath}"`], {
+      shell: true,
+    });
+    process.on("error", () => {
+      display.showError(
+        `Failed to start conversion for ${path.basename(dofPath)}`
+      );
+      resolve(null);
+    });
+    process.on("exit", (code) => {
+      if (code === 0) {
+        if (fs.existsSync(dprojPath)) {
+          resolve(dprojPath);
+        } else {
+          display.showError(
+            `DPROJ file was not created after conversion of ${path.basename(
+              dofPath
+            )}`
+          );
+          resolve(null);
+        }
+      } else {
+        display.showError(
+          `Conversion failed for ${path.basename(dofPath)} (code: ${code})`
+        );
+        resolve(null);
+      }
+    });
+  });
+}
+
 async function analyzeFiles(
   serverSupplier: ServerSupplier,
   issueCollection: vscode.DiagnosticCollection,
@@ -181,7 +298,15 @@ async function analyzeFiles(
 ) {
   inAnalysis = true;
   try {
-    const projectFile = await selectProjectFile(statusItem);
+    let projectFile = await selectProjectFile(statusItem);
+
+    if (projectFile?.toLowerCase().endsWith(".dof")) {
+      statusItem.setAction("Converting DOF to DPROJ...");
+      const dprojPath = await convertDofToDproj(projectFile);
+      if (dprojPath) {
+        projectFile = dprojPath;
+      }
+    }
 
     let config;
     if (projectFile) {
