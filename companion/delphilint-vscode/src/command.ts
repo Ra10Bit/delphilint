@@ -28,7 +28,7 @@ import {
 } from "./delphiProjectUtils";
 import { LintStatusItem } from "./statusBar";
 
-const DELPHI_SOURCE_EXTENSIONS = [".pas", ".dpk", ".dpr"];
+const DELPHI_SOURCE_EXTENSIONS = [".pas", ".dpk", ".dpr", ".inc"];
 
 let inAnalysis: boolean = false;
 
