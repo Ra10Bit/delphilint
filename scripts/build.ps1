@@ -32,7 +32,7 @@
 param(
   [switch]$ShowOutput,
   [switch]$SkipCompanion,
-  [switch]$SkipClient,
+  [switch]$SkipClient = ($args.Count -eq 0), # ��������� SkipClient �� ��������� ���� ��� ����������
   [Parameter(ValueFromRemainingArguments)]
   [string[]]$DelphiVersions
 )
