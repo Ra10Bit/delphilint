@@ -14,11 +14,16 @@
   Display detailed output.
 .PARAMETER SkipCompanion
   Skip building the VSCode companion extension.
+.PARAMETER SkipClient
+  Skip building the Delphi client.
 .PARAMETER DelphiVersions
   Any number of Delphi package versions, optionally specifying an installation path.
 .EXAMPLE
   build.ps1 280
   Build and package all DelphiLint projects using a standard Delphi 11 Alexandria installation.
+.EXAMPLE
+  build.ps1 -SkipClient
+  Build and package all DelphiLint projects except the Delphi client.
 .EXAMPLE
   build.ps1 "290=C:\Custom Path\Embarcadero\23.0"
   Build and package all DelphiLint projects using a non-standard Delphi 12 Athens installation.
@@ -27,6 +32,7 @@
 param(
   [switch]$ShowOutput,
   [switch]$SkipCompanion,
+  [switch]$SkipClient = ($args.Count -eq 0), # ”становка SkipClient по умолчанию если нет параметров
   [Parameter(ValueFromRemainingArguments)]
   [string[]]$DelphiVersions
 )
@@ -94,41 +100,55 @@ class PackagingConfig {
 }
 
 $DelphiInstalls = $DelphiVersions `
-  | ForEach-Object { ,($_ -split '=') } `
-  | Where-Object {
-      $SupportedVersion = $DelphiVersionMap.ContainsKey($_[0])
+| ForEach-Object { , ($_ -split '=') } `
+| Where-Object {
+  $SupportedVersion = $DelphiVersionMap.ContainsKey($_[0])
 
-      if (-not $SupportedVersion) {
-        Write-Host "Delphi version '$($_[0])' is not compatible with DelphiLint, ignoring."
-      }
+  if (-not $SupportedVersion) {
+    Write-Host "Delphi version '$($_[0])' is not compatible with DelphiLint, ignoring."
+  }
 
-      return $SupportedVersion
-    } `
-  | ForEach-Object {
-      if ($_.Length -gt 1) {
-        return [DelphiInstall]::new($_[0], $_[1])
-      } else {
-        return [DelphiInstall]::new($_[0])
-      }
-    }
+  return $SupportedVersion
+} `
+| ForEach-Object {
+  if ($_.Length -gt 1) {
+    return [DelphiInstall]::new($_[0], $_[1])
+  }
+  else {
+    return [DelphiInstall]::new($_[0])
+  }
+}
 
 if ($DelphiInstalls.Length -eq 0) {
-  Write-Problem "Please supply at least one version to build for."
-  Exit
+  if (-not $SkipClient) {
+    Write-Problem "Please supply at least one version to build for."
+    Exit
+  }
+  else {
+    Write-Host "No Delphi versions specified, skipping client build."
+  }
 }
 
 $Version = Get-Version
-$StaticVersion = $Version -replace "\+dev.*$","+dev"
+Write-Host "Get-Version: $Version"
+$StaticVersion = $Version -replace "\+dev.*$", "+dev"
+Write-Host "StaticVersion: $StaticVersion"
+$GitHash = (git rev-parse --short HEAD)  # If you need to keep the git hash
+Write-Host "GitHash: $GitHash"
+# ”дал€ем git хеш из версии, оставл€€ только основную версию
+$CleanVersion = $Version -replace "\.[a-f0-9]{7}$", ""
+Write-Host "CleanVersion: $CleanVersion"
 
 $ServerJar = Join-Path $PSScriptRoot "../server/delphilint-server/target/delphilint-server-$Version.jar"
-$CompanionVsix = Join-Path $PSScriptRoot "../companion/delphilint-vscode/delphilint-vscode-$StaticVersion.vsix"
+$CompanionVsix = Join-Path $PSScriptRoot "../companion/delphilint-vscode/delphilint-vscode-$CleanVersion.vsix"
 
 $TargetDir = Join-Path $PSScriptRoot "../target"
 
 function Assert-Exists([string]$Path) {
   if (Test-Path $Path) {
     Write-Status -Status Success "$(Resolve-PathToRoot $Path) exists."
-  } else {
+  }
+  else {
     Write-Status -Status Problem "$Path does not exist."
     Exit
   }
@@ -153,14 +173,15 @@ function Assert-ClientVersion([string]$Version, [string]$Message) {
 
   if (Test-ClientVersion -Path $Path -Version $Version) {
     Write-Status -Status Success "Version is set correctly as $Version in dlversion.inc."
-  } else {
+  }
+  else {
     Write-Status -Status Problem "Version is not set correctly as $Version in dlversion.inc."
     Exit
   }
 }
 
 function Assert-ExitCode([string]$Desc) {
-  if($LASTEXITCODE) {
+  if ($LASTEXITCODE) {
     throw "$Desc failed with code $LASTEXITCODE"
   }
 }
@@ -189,10 +210,34 @@ function Invoke-ServerCompile() {
 function Invoke-VscCompanionCompile {
   Push-Location (Join-Path $PSScriptRoot ..\companion\delphilint-vscode)
   try {
-    & npm install
+    # Clear npm cache first
+    & npm cache clean --force
+        
+    # Delete existing node_modules and package-lock.json
+    if (Test-Path node_modules) {
+      Remove-Item -Recurse -Force node_modules
+    }
+    if (Test-Path package-lock.json) {
+      Remove-Item -Force package-lock.json
+    }
+
+    # Backup original package.json
+    Copy-Item package.json package.json.bak -Force
+
+    # Update version in package.json to use clean version
+    $packageJson = Get-Content "package.json" | ConvertFrom-Json
+    $packageJson.version = $CleanVersion  # This should be "1.3.0" etc.
+    $packageJson | ConvertTo-Json -Depth 100 | Set-Content "package.json"
+
+    & npm install --no-package-lock
     Assert-ExitCode "VS Code companion npm install"
-    & npx -y @vscode/vsce package --skip-license
+      
+    # Package without git info
+    & npx -y @vscode/vsce package --skip-license --no-git-tag-version
     Assert-ExitCode "VS Code companion build"
+
+    # Restore original package.json
+    Move-Item package.json.bak package.json -Force
   }
   finally {
     Pop-Location
@@ -219,7 +264,7 @@ function New-SetupScript([string]$Path, [PackagingConfig]$Config) {
 
   Copy-Item (Join-Path $PSScriptRoot TEMPLATE_install.ps1) $Path
   $Content = Get-Content -Raw $Path
-  $Content = $Content -replace "##\{STARTREPLACE\}##(.|\n)*##\{ENDREPLACE\}##",$MacroContents
+  $Content = $Content -replace "##\{STARTREPLACE\}##(.|\n)*##\{ENDREPLACE\}##", $MacroContents
   Set-Content -Path $Path -Value $Content
 }
 
@@ -252,13 +297,15 @@ function Invoke-Project([hashtable]$Project) {
 
     if ($ShowOutput) {
       & $Project.Build | ForEach-Object { Write-Host $_ }
-    } else {
+    }
+    else {
       $Output = (& $Project.Build)
     }
 
     if ($LASTEXITCODE -eq 0) {
       Write-Host -ForegroundColor Green "Succeeded" -NoNewline
-    } else {
+    }
+    else {
       $Output | ForEach-Object { Write-Host $_ }
       Write-Problem "Failed."
       Exit
@@ -282,27 +329,36 @@ $PackagingConfigs = $DelphiInstalls | ForEach-Object { [PackagingConfig]::new($_
 
 $Projects = @(
   @{
-    "Name" = "Build client"
-    "Prerequisite" = {
-      Assert-ClientVersion -Version $Version
-      $PackagingConfigs | ForEach-Object { Assert-Exists $_.Delphi.InstallationPath }
+    "Name"          = "Build client"
+    "Prerequisite"  = {
+      if (-not $SkipClient) {
+        Assert-ClientVersion -Version $Version
+        $PackagingConfigs | ForEach-Object { Assert-Exists $_.Delphi.InstallationPath }
+      }
     }
-    "Build" = {
-      $PackagingConfigs | ForEach-Object {
-        Invoke-ClientCompile -Config $_
-        $_.Artifacts.Add($_.GetInputBplPath(), $_.GetOutputBplName())
-        Write-Host "Built for Delphi $($_.Delphi.Version.Name) ($($_.Delphi.Version.PackageVersion))."
+    "Build"         = {
+      if (-not $SkipClient) {
+        $PackagingConfigs | ForEach-Object {
+          Invoke-ClientCompile -Config $_
+          $_.Artifacts.Add($_.GetInputBplPath(), $_.GetOutputBplName())
+          Write-Host "Built for Delphi $($_.Delphi.Version.Name) ($($_.Delphi.Version.PackageVersion))."
+        }
+      }
+      else {
+        Write-Host -ForegroundColor Yellow "-SkipClient flag passed - skipping Delphi client build."
       }
     }
     "Postrequisite" = {
-      $PackagingConfigs | ForEach-Object {
-        Assert-Exists $_.GetInputBplPath()
+      if (-not $SkipClient) {
+        $PackagingConfigs | ForEach-Object {
+          Assert-Exists $_.GetInputBplPath()
+        }
       }
     }
   },
   @{
-    "Name" = "Build server"
-    "Build" = {
+    "Name"          = "Build server"
+    "Build"         = {
       Invoke-ServerCompile
       $StandaloneArtifacts.Add($ServerJar, "delphilint-server-$Version.jar");
       $CommonArtifacts.Add($ServerJar, "delphilint-server-$Version.jar");
@@ -312,11 +368,12 @@ $Projects = @(
     }
   },
   @{
-    "Name" = "Build VS Code companion"
-    "Build" = {
+    "Name"          = "Build VS Code companion"
+    "Build"         = {
       if ($SkipCompanion) {
         Write-Host -ForegroundColor Yellow "-SkipCompanion flag passed - skipping build."
-      } else {
+      }
+      else {
         Invoke-VscCompanionCompile
         $StandaloneArtifacts.Add($CompanionVsix, "delphilint-vscode-$StaticVersion.vsix");
       }
@@ -328,8 +385,8 @@ $Projects = @(
     }
   },
   @{
-    "Name" = "Collate build artifacts"
-    "Build" = {
+    "Name"          = "Collate build artifacts"
+    "Build"         = {
       Clear-TargetFolder
       $StandaloneArtifacts.GetEnumerator() | ForEach-Object {
         Copy-Item -Path $_.Key -Destination (Join-Path $TargetDir $_.Value)
@@ -357,8 +414,8 @@ $Projects = @(
     }
   },
   @{
-    "Name" = "Zip build artifacts"
-    "Build" = {
+    "Name"          = "Zip build artifacts"
+    "Build"         = {
       $PackagingConfigs | ForEach-Object {
         $PackageFolder = Join-Path $TargetDir $_.GetPackageFolderName()
         $ZippedPackage = "${PackageFolder}.zip"
