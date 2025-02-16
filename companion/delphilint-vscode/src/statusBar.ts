@@ -58,6 +58,11 @@ export class LintStatusItem {
     const actionText = this.action ?? "Idle";
 
     this.statusItem.text = `${iconText}DelphiLint: ${actionText} (${activeProjectText})`;
+
+    // Add tooltip with additional project info
+    this.statusItem.tooltip = this.activeProject
+      ? `Active project: ${this.activeProject}\nClick to change project`
+      : "Click to select a project";
   }
 
   setActiveProject(activeProject?: ProjectChoice) {
