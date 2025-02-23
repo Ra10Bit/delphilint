@@ -143,6 +143,15 @@ function getDefaultBaseDir(inputFiles: string[]): string {
   return baseWorkspace.uri.fsPath;
 }
 
+function logDebug(message: string, data?: any) {
+  const detailsStr = data ? `\n${JSON.stringify(data, null, 2)}` : "";
+  const fullMessage = `${message}${detailsStr}`;
+
+  // Log to both console and show popup
+  console.log(fullMessage);
+  vscode.window.showInformationMessage(fullMessage);
+}
+
 function constructInputFiles(
   inputFiles: string[],
   baseDir: string,
@@ -158,12 +167,65 @@ function constructInputFiles(
   );
 
   if (sourceFiles.length > 0) {
-    if (projectFile) {
-      return [...sourceFiles, projectFile];
-    } else {
-      return sourceFiles;
+    const result = projectFile ? [...sourceFiles, projectFile] : sourceFiles;
+
+    logDebug("=== Input Files Paths ===", {
+      baseDirectory: baseDir,
+      projectFile: projectFile || "None",
+      sourceFiles: result.map((file) => ({
+        file: file,
+      })),
+    });
+
+    return result;
+  }
+}
+
+function adjustBaseDirIfNeeded(msg: RequestAnalyze): RequestAnalyze {
+  // If there are no files, return original message
+  if (!msg.inputFiles.length) {
+    return msg;
+  }
+
+  // Get all file directories
+  const fileDirs = msg.inputFiles
+    .map((file) => path.dirname(path.resolve(file)))
+    .map((dir) => dir.toLowerCase());
+
+  const currentBaseDir = path.resolve(msg.baseDir).toLowerCase();
+
+  // Check if any file is outside (above) the current base directory
+  const needsAdjustment = fileDirs.some(
+    (dir) => !dir.startsWith(currentBaseDir)
+  );
+
+  if (!needsAdjustment) {
+    return msg;
+  }
+
+  // Find the common ancestor directory
+  let commonDir = path.dirname(path.resolve(msg.inputFiles[0]));
+
+  for (const fileDir of fileDirs) {
+    while (
+      !fileDir.startsWith(commonDir.toLowerCase()) &&
+      commonDir.length > 3
+    ) {
+      commonDir = path.dirname(commonDir);
     }
   }
+
+  logDebug("=== Base Directory Adjustment ===", {
+    originalBaseDir: msg.baseDir,
+    adjustedBaseDir: commonDir,
+    reason: "Files found above original base directory",
+  });
+
+  // Return new message with adjusted base directory
+  return {
+    ...msg,
+    baseDir: commonDir,
+  };
 }
 
 async function doAnalyze(
@@ -172,7 +234,26 @@ async function doAnalyze(
   statusUpdate: LoggerFunction,
   msg: RequestAnalyze
 ) {
-  const sourceFiles = msg.inputFiles.filter((file) => isFileDelphiSource(file));
+  // Adjust base directory if needed
+  const adjustedMsg = adjustBaseDirIfNeeded(msg);
+
+  const sourceFiles = adjustedMsg.inputFiles.filter((file) =>
+    isFileDelphiSource(file)
+  );
+
+  logDebug("=== Analysis Input Files ===", {
+    baseDirectory: adjustedMsg.baseDir,
+    totalFiles: adjustedMsg.inputFiles.length,
+    sourceFiles: {
+      count: sourceFiles.length,
+      files: sourceFiles,
+    },
+    projectKey: adjustedMsg.projectKey,
+    projectPropertiesPath: adjustedMsg.projectPropertiesPath,
+    sonarHostUrl: adjustedMsg.sonarHostUrl,
+    disabledRules: adjustedMsg.disabledRules,
+    inputFiles: adjustedMsg.inputFiles,
+  });
 
   const flagshipFile = path.basename(sourceFiles[0]);
   const otherSourceFilesMsg =
@@ -180,7 +261,7 @@ async function doAnalyze(
   const analyzingMsg = `Analyzing ${flagshipFile}${otherSourceFilesMsg}...`;
   statusUpdate(analyzingMsg);
 
-  const issues = await server.analyze(msg);
+  const issues = await server.analyze(adjustedMsg);
 
   for (const filePath of sourceFiles) {
     issueCollection.set(vscode.Uri.file(filePath), undefined);
