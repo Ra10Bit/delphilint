@@ -32,7 +32,7 @@
 param(
   [switch]$ShowOutput,
   [switch]$SkipCompanion,
-  [switch]$SkipClient = ($args.Count -eq 0), # Óñòàíîâêà SkipClient ïî óìîë÷àíèþ åñëè íåò ïàðàìåòðîâ
+  [switch]$SkipClient = ($args.Count -eq 0), # ˜˜˜˜˜˜˜˜˜ SkipClient ˜˜ ˜˜˜˜˜˜˜˜˜ ˜˜˜˜ ˜˜˜ ˜˜˜˜˜˜˜˜˜˜
   [Parameter(ValueFromRemainingArguments)]
   [string[]]$DelphiVersions
 )
@@ -119,14 +119,14 @@ $DelphiInstalls = $DelphiVersions `
   }
 }
 
-if ($DelphiInstalls.Length -eq 0) {
-  if (-not $SkipClient) {
-    Write-Problem "Please supply at least one version to build for."
-    Exit
-  }
-  else {
-    Write-Host "No Delphi versions specified, skipping client build."
-  }
+if ($DelphiInstalls.Length -eq 0 -and $SkipClient) {
+  # Create a default packaging config when skipping client
+  $DelphiInstalls = @([DelphiInstall]::new("290")) # Use 290 (Delphi 12) as default
+  Write-Host "Creating default package configuration for Delphi 12 (client build will be skipped)"
+}
+elseif ($DelphiInstalls.Length -eq 0) {
+  Write-Problem "Please supply at least one version to build for."
+  Exit
 }
 
 $Version = Get-Version
@@ -135,7 +135,7 @@ $StaticVersion = $Version -replace "\+dev.*$", "+dev"
 Write-Host "StaticVersion: $StaticVersion"
 $GitHash = (git rev-parse --short HEAD)  # If you need to keep the git hash
 Write-Host "GitHash: $GitHash"
-# Óäàëÿåì git õåø èç âåðñèè, îñòàâëÿÿ òîëüêî îñíîâíóþ âåðñèþ
+# ˜˜˜˜˜˜˜ git ˜˜˜ ˜˜ ˜˜˜˜˜˜, ˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜
 $CleanVersion = $Version -replace "\.[a-f0-9]{7}$", ""
 Write-Host "CleanVersion: $CleanVersion"
 
@@ -201,6 +201,26 @@ function Invoke-ServerCompile() {
   Push-Location (Join-Path $PSScriptRoot ..\server)
   try {
     & .\buildversioned.ps1
+  }
+  finally {
+    Pop-Location
+  }
+}
+
+function Invoke-DOF2DPROJCompile([DelphiInstall]$Delphi) {
+  Write-Host "Compiling DOF2DPROJ utility..."
+  $ProjectPath = Join-Path $PSScriptRoot "..\utils\DOF2DPROJ\dof2dproj.dproj"
+  
+  Push-Location (Join-Path $PSScriptRoot "..\utils\DOF2DPROJ")
+  try {
+    & cmd /c "`"$($Delphi.InstallationPath)\bin\rsvars.bat`" && msbuild dof2dproj.dproj /p:config=`"Release`""
+    Assert-ExitCode "DOF2DPROJ compile"
+      
+    # Get the output EXE path
+    $OutputPath = Join-Path $PSScriptRoot "..\utils\DOF2DPROJ\Win32\Release\dof2dproj.exe"
+      
+    # Add to common artifacts so it's included in all packages
+    $CommonArtifacts.Add($OutputPath, "utils\dof2dproj.exe")
   }
   finally {
     Pop-Location
@@ -273,7 +293,13 @@ function New-PackageFolder([PackagingConfig]$Config, [hashtable]$Artifacts) {
   New-Item -ItemType Directory $Path -Force
 
   $Artifacts.GetEnumerator() | ForEach-Object {
-    Copy-Item -Path $_.Key -Destination (Join-Path $Path $_.Value)
+    # Create the directory structure if it contains subdirectories
+    $DestPath = Join-Path $Path $_.Value
+    $DestDir = Split-Path -Parent $DestPath
+    if (-not (Test-Path $DestDir)) {
+      New-Item -ItemType Directory $DestDir -Force
+    }
+    Copy-Item -Path $_.Key -Destination $DestPath
   }
 
   $InstallScriptPath = (Join-Path $Path "install.ps1")
@@ -331,28 +357,22 @@ $Projects = @(
   @{
     "Name"          = "Build client"
     "Prerequisite"  = {
-      if (-not $SkipClient) {
-        Assert-ClientVersion -Version $Version
-        $PackagingConfigs | ForEach-Object { Assert-Exists $_.Delphi.InstallationPath }
-      }
+      Assert-ClientVersion -Version $Version
+      $PackagingConfigs | ForEach-Object { Assert-Exists $_.Delphi.InstallationPath }
     }
     "Build"         = {
-      if (-not $SkipClient) {
-        $PackagingConfigs | ForEach-Object {
-          Invoke-ClientCompile -Config $_
-          $_.Artifacts.Add($_.GetInputBplPath(), $_.GetOutputBplName())
-          Write-Host "Built for Delphi $($_.Delphi.Version.Name) ($($_.Delphi.Version.PackageVersion))."
-        }
+      $PackagingConfigs | ForEach-Object {
+        Invoke-ClientCompile -Config $_
+        $_.Artifacts.Add($_.GetInputBplPath(), $_.GetOutputBplName())
+        Write-Host "Built for Delphi $($_.Delphi.Version.Name) ($($_.Delphi.Version.PackageVersion))."
       }
       else {
         Write-Host -ForegroundColor Yellow "-SkipClient flag passed - skipping Delphi client build."
       }
     }
     "Postrequisite" = {
-      if (-not $SkipClient) {
-        $PackagingConfigs | ForEach-Object {
-          Assert-Exists $_.GetInputBplPath()
-        }
+      $PackagingConfigs | ForEach-Object {
+        Assert-Exists $_.GetInputBplPath()
       }
     }
   },
@@ -362,6 +382,13 @@ $Projects = @(
       Invoke-ServerCompile
       $StandaloneArtifacts.Add($ServerJar, "delphilint-server-$Version.jar");
       $CommonArtifacts.Add($ServerJar, "delphilint-server-$Version.jar");
+      $DelphiLintIniPath = Join-Path $PSScriptRoot "..\utils\delphilint.ini"
+      if (Test-Path $DelphiLintIniPath) {
+        $CommonArtifacts.Add($DelphiLintIniPath, "delphilint.ini")
+      }
+      else {
+        Write-Warning "delphilint.ini not found at: $DelphiLintIniPath"
+      }
     }
     "Postrequisite" = {
       Assert-Exists $ServerJar
@@ -376,12 +403,32 @@ $Projects = @(
       else {
         Invoke-VscCompanionCompile
         $StandaloneArtifacts.Add($CompanionVsix, "delphilint-vscode-$StaticVersion.vsix");
+        # Add VSIX to common artifacts so it's included in all packages
+        $CommonArtifacts.Add($CompanionVsix, "delphilint-vscode-$StaticVersion.vsix")
       }
     }
     "Postrequisite" = {
       if (-not $SkipCompanion) {
         Assert-Exists $CompanionVsix
       }
+    }
+  },
+  @{
+    "Name"          = "Build DOF2DPROJ utility"
+    "Build"         = {
+      # Use the first Delphi installation to compile DOF2DPROJ
+      if ($DelphiInstalls.Length -gt 0) {
+        Invoke-DOF2DPROJCompile -Delphi $DelphiInstalls[0]
+      }
+      elseif ($SkipClient) {
+        # If skipping client and no Delphi version specified, use default Delphi install
+        $DefaultDelphi = [DelphiInstall]::new("290")  # Use Delphi 12
+        Invoke-DOF2DPROJCompile -Delphi $DefaultDelphi
+      }
+    }
+    "Postrequisite" = {
+      $OutputPath = Join-Path $PSScriptRoot "..\utils\DOF2DPROJ\Win32\Release\dof2dproj.exe"
+      Assert-Exists $OutputPath
     }
   },
   @{
@@ -438,7 +485,13 @@ Write-Title "Packaging DelphiLint ${Version}"
 $Time = Measure-Command {
   $Projects | ForEach-Object {
     Write-Header $_.Name
-    Invoke-Project $_
+      
+    if ($_.Name -eq "Build client" -and $SkipClient) {
+      Write-Host -ForegroundColor Yellow "-SkipClient flag passed - skipping Delphi client build."
+    }
+    else {
+      Invoke-Project $_
+    }
   }
 }
 
