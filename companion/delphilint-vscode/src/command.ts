@@ -56,50 +56,59 @@ function isPathAbsolute(filePath: string): boolean {
 
 function isFileInSearchPath(filePath: string, dprojPath: string): boolean {
   try {
-    // Normalize all paths
     const normalizedFilePath = path.dirname(path.resolve(filePath));
     const normalizedDprojPath = path.dirname(path.resolve(dprojPath));
-    // First check relative to dproj path
-    if (
-      normalizedFilePath
-        .toLowerCase()
-        .startsWith(normalizedDprojPath.toLowerCase())
-    ) {
+
+    logDebug("Checking paths:", {
+      originalFilePath: filePath,
+      normalizedFilePath: normalizedFilePath,
+      originalDprojPath: dprojPath,
+      normalizedDprojPath: normalizedDprojPath,
+    });
+
+    // Check if file is directly under project directory
+    if (normalizedFilePath.startsWith(normalizedDprojPath)) {
+      logDebug("File is directly under project directory");
       return true;
     }
-    // Read the dproj file content
+
     const fileContent = fs.readFileSync(dprojPath, "utf8");
-    // Search for DCC_UnitSearchPath using regex
     const match = /<DCC_UnitSearchPath>(.*?)<\/DCC_UnitSearchPath>/s.exec(
       fileContent
     );
+
     if (!match) {
+      logDebug("No DCC_UnitSearchPath found in project file");
       return false;
     }
-    const searchPaths = match[1];
-    // Split paths by semicolon
-    const paths = searchPaths.split(";").filter((p) => p.trim());
-    // Check each path
-    for (const searchPath of paths) {
+
+    const searchPaths = match[1].split(";").filter((p) => p.trim());
+    logDebug("Found search paths:", searchPaths);
+
+    for (const searchPath of searchPaths) {
       if (!searchPath) {
         continue;
       }
-      // Handle relative paths from dproj
-      let fullPath = searchPath;
-      if (!isPathAbsolute(searchPath)) {
-        fullPath = path.join(normalizedDprojPath, searchPath);
-      }
-      // Normalize search path
-      const normalizedSearchPath = path.resolve(fullPath) + path.sep;
-      // Check if file path starts with search path (case-insensitive)
-      if (
-        normalizedFilePath
-          .toLowerCase()
-          .startsWith(normalizedSearchPath.toLowerCase())
-      ) {
+
+      const fullSearchPath = path.isAbsolute(searchPath)
+        ? searchPath
+        : path.resolve(normalizedDprojPath, searchPath);
+
+      const normalizedSearchPath = path.resolve(fullSearchPath);
+
+      logDebug("Checking search path:", {
+        original: searchPath,
+        full: fullSearchPath,
+        normalized: normalizedSearchPath,
+      });
+
+      if (normalizedFilePath.startsWith(normalizedSearchPath)) {
+        logDebug("File found in search path:", normalizedSearchPath);
         return true;
       }
     }
+
+    logDebug("File not found in any search path");
     return false;
   } catch (error) {
     display.showError(`Error in isFileInSearchPath: ${error}`);
