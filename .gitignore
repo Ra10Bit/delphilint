@@ -25,6 +25,8 @@ dlversion.inc.orig
 .scannerwork/
 __recovery/
 
+.history/
+
 # JavaScript
 node_modules/
 out/

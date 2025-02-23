@@ -31,7 +31,7 @@ public enum Language {
       "delphi",
       "communitydelphi",
       "Delphi",
-      new String[] {".pas", ".dpr", ".dpk"},
+      new String[] {".pas", ".dpr", ".dpk", ".inc"},
       "sonar.delphi.file.suffixes"),
   // Some SonarLint code relies on specific language values being present.
   JS;

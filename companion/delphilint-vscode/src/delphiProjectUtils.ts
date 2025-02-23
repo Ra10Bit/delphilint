@@ -33,9 +33,9 @@ function setActiveProject(value: ProjectChoice) {
 }
 
 async function getProjectFilesInWorkspace() {
-  return (await vscode.workspace.findFiles("**/*.dproj")).map(
-    (uri) => uri.fsPath
-  );
+  const dprojFiles = await vscode.workspace.findFiles("**/*.dproj");
+  const dofFiles = await vscode.workspace.findFiles("**/*.dof");
+  return [...dprojFiles, ...dofFiles].map((uri) => uri.fsPath);
 }
 
 export async function promptProject(): Promise<ProjectChoice> {
@@ -102,9 +102,10 @@ export async function getOrPromptActiveProject(): Promise<ProjectChoice> {
 export function getProjectOptions(
   projectFilePath: string
 ): ProjectOptions | undefined {
+  // Handle both .dproj and .dof files
   const projectOptionsPath = projectFilePath
     .toLowerCase()
-    .replace(".dproj", ".delphilint");
+    .replace(/\.(dproj|dof)$/, ".delphilint");
   if (fs.existsSync(projectOptionsPath)) {
     return new ProjectOptions(projectOptionsPath);
   }
