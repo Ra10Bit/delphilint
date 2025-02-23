@@ -343,7 +343,8 @@ async function analyzeFiles(
     statusItem.setAction("Analyzing...");
     await doAnalyze(server, issueCollection, statusItem.setAction, {
       baseDir: config.baseDir,
-      inputFiles: projectFile ? [...inputFiles, projectFile] : inputFiles,
+      inputFiles: inputFiles, // prevent DPROJ duplication
+      // inputFiles: projectFile ? [...inputFiles, projectFile] : inputFiles,
       projectKey: config.projectKey,
       projectPropertiesPath: config.projectPropertiesPath,
       sonarHostUrl: config.sonarHostUrl,
