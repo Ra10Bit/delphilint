@@ -31,7 +31,8 @@ type
     FDofFile: TIniFile;
     FTemplateContent: TStringList;
     FOutputContent: TStringList;
-    FOnlyDprName, FDprPath: string;
+    FOnlyDprName: string;
+    FDprPath: string;
     FUnits: TStringList;
     FForms: TStringList;
     FTagMappings: TDictionary<string, TValueMapping>;
@@ -384,8 +385,11 @@ end;
 procedure TProjectConverter.ExtractFormsAndUnits(const Line: string);
 var
   Parts: TArray<string>;
-  UnitPart, FilePart, FormName: string;
-  BraceStart, BraceEnd: Integer;
+  UnitPart: string;
+  FilePart: string;
+  FormName: string;
+  BraceStart: Integer;
+  BraceEnd: Integer;
   FormInfo: TFormInfo;
 begin
   WriteLn('Extracting from line: ', Line);
@@ -542,7 +546,8 @@ end;
 
 procedure TProjectConverter.Convert(const DofFileName: string);
 var
-  DprFileName, OutputFileName: string;
+  DprFileName: string;
+  OutputFileName: string;
   Sections: TStringList;
 begin
   try
@@ -631,7 +636,7 @@ var
   LNormalizedSearchPath: string;
   LNormalizedDprojPath: string;
   LMatch: TMatch;
-  i: Integer;
+  I: Integer;
 begin
   Result := False;
 
@@ -665,9 +670,9 @@ begin
     LPaths.DelimitedText := LSearchPaths;
 
     // Проверяем каждый путь
-    for i := 0 to Pred(LPaths.Count) do
+    for I := 0 to Pred(LPaths.Count) do
     begin
-      LPath := LPaths[i];
+      LPath := LPaths[I];
       if LPath = '' then
         Continue;
 
@@ -693,16 +698,16 @@ begin
 end;
 
 procedure TestSearchPaths;
+type
+  TPathInfo = record
+    FilePath: string;
+    Expected: Boolean;
+  end;
 var
   ProjectPath: string;
-  TestPaths: array of record FilePath: string;
-  Expected: Boolean;
-end;
-I:
-Integer;
-ActualResult:
-Boolean;
-
+  TestPaths: array of TPathInfo;
+  I: Integer;
+  ActualResult: Boolean;
 begin
   WriteLn('=== Testing Search Paths ===');
 
@@ -777,7 +782,7 @@ begin
       Exit;
     end;
 
-    TemplateFile := ExtractFilePath(ParamStr(0)) + 'rspages.dproj';
+    TemplateFile := ChangeFileExt(ParamStr(0), '.template');
     WriteLn('Looking for template file: ', TemplateFile);
     if not FileExists(TemplateFile) then
     begin
