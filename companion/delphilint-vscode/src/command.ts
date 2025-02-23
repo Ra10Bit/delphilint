@@ -59,16 +59,8 @@ function isFileInSearchPath(filePath: string, dprojPath: string): boolean {
     const normalizedFilePath = path.dirname(path.resolve(filePath));
     const normalizedDprojPath = path.dirname(path.resolve(dprojPath));
 
-    logDebug("Checking paths:", {
-      originalFilePath: filePath,
-      normalizedFilePath: normalizedFilePath,
-      originalDprojPath: dprojPath,
-      normalizedDprojPath: normalizedDprojPath,
-    });
-
     // Check if file is directly under project directory
     if (normalizedFilePath.startsWith(normalizedDprojPath)) {
-      logDebug("File is directly under project directory");
       return true;
     }
 
@@ -78,12 +70,10 @@ function isFileInSearchPath(filePath: string, dprojPath: string): boolean {
     );
 
     if (!match) {
-      logDebug("No DCC_UnitSearchPath found in project file");
       return false;
     }
 
     const searchPaths = match[1].split(";").filter((p) => p.trim());
-    logDebug("Found search paths:", searchPaths);
 
     for (const searchPath of searchPaths) {
       if (!searchPath) {
@@ -96,19 +86,11 @@ function isFileInSearchPath(filePath: string, dprojPath: string): boolean {
 
       const normalizedSearchPath = path.resolve(fullSearchPath);
 
-      logDebug("Checking search path:", {
-        original: searchPath,
-        full: fullSearchPath,
-        normalized: normalizedSearchPath,
-      });
-
       if (normalizedFilePath.startsWith(normalizedSearchPath)) {
-        logDebug("File found in search path:", normalizedSearchPath);
         return true;
       }
     }
 
-    logDebug("File not found in any search path");
     return false;
   } catch (error) {
     display.showError(`Error in isFileInSearchPath: ${error}`);
@@ -152,15 +134,6 @@ function getDefaultBaseDir(inputFiles: string[]): string {
   return baseWorkspace.uri.fsPath;
 }
 
-function logDebug(message: string, data?: any) {
-  const detailsStr = data ? `\n${JSON.stringify(data, null, 2)}` : "";
-  const fullMessage = `${message}${detailsStr}`;
-
-  // Log to both console and show popup
-  console.log(fullMessage);
-  vscode.window.showInformationMessage(fullMessage);
-}
-
 function constructInputFiles(
   inputFiles: string[],
   baseDir: string,
@@ -176,17 +149,7 @@ function constructInputFiles(
   );
 
   if (sourceFiles.length > 0) {
-    const result = projectFile ? [...sourceFiles, projectFile] : sourceFiles;
-
-    logDebug("=== Input Files Paths ===", {
-      baseDirectory: baseDir,
-      projectFile: projectFile || "None",
-      sourceFiles: result.map((file) => ({
-        file: file,
-      })),
-    });
-
-    return result;
+    return projectFile ? [...sourceFiles, projectFile] : sourceFiles;
   }
 }
 
@@ -224,12 +187,6 @@ function adjustBaseDirIfNeeded(msg: RequestAnalyze): RequestAnalyze {
     }
   }
 
-  logDebug("=== Base Directory Adjustment ===", {
-    originalBaseDir: msg.baseDir,
-    adjustedBaseDir: commonDir,
-    reason: "Files found above original base directory",
-  });
-
   // Return new message with adjusted base directory
   return {
     ...msg,
@@ -249,20 +206,6 @@ async function doAnalyze(
   const sourceFiles = adjustedMsg.inputFiles.filter((file) =>
     isFileDelphiSource(file)
   );
-
-  logDebug("=== Analysis Input Files ===", {
-    baseDirectory: adjustedMsg.baseDir,
-    totalFiles: adjustedMsg.inputFiles.length,
-    sourceFiles: {
-      count: sourceFiles.length,
-      files: sourceFiles,
-    },
-    projectKey: adjustedMsg.projectKey,
-    projectPropertiesPath: adjustedMsg.projectPropertiesPath,
-    sonarHostUrl: adjustedMsg.sonarHostUrl,
-    disabledRules: adjustedMsg.disabledRules,
-    inputFiles: adjustedMsg.inputFiles,
-  });
 
   const flagshipFile = path.basename(sourceFiles[0]);
   const otherSourceFilesMsg =
