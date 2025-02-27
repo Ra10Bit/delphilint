@@ -218,13 +218,15 @@ function Invoke-DOF2DPROJCompile([DelphiInstall]$Delphi) {
       
         # Get the output EXE path
         $OutputPath = Join-Path $PSScriptRoot "..\utils\DOF2DPROJ\Win32\Release\dof2dproj.exe"
+        $TemplatePath = Join-Path $PSScriptRoot "..\utils\DOF2DPROJ\dof2dproj.template"
       
         # Add to common artifacts so it's included in all packages
         $CommonArtifacts.Add($OutputPath, "dof2dproj.exe")
 
         if (Test-Path $TemplatePath) {
             $CommonArtifacts.Add($TemplatePath, "dof2dproj.template")
-        } else {
+        }
+        else {
             Write-Warning "dof2dproj.template not found at: $TemplatePath"
         }
     }
