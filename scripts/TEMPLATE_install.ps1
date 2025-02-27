@@ -128,7 +128,7 @@ function Install-VSCodeExtension {
     
     if ($codeCommand) {
       # Force install the extension
-      $output = & code --force --install-extension $VsixPath 2>&1
+      $output = & code --install-extension "$VsixPath" --force 2>&1
       
       if ($LASTEXITCODE -eq 0) {
         Write-Host "VS Code extension installed successfully."
