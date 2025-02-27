@@ -220,7 +220,7 @@ function Invoke-DOF2DPROJCompile([DelphiInstall]$Delphi) {
     $OutputPath = Join-Path $PSScriptRoot "..\utils\DOF2DPROJ\Win32\Release\dof2dproj.exe"
       
     # Add to common artifacts so it's included in all packages
-    $CommonArtifacts.Add($OutputPath, "utils\dof2dproj.exe")
+    $CommonArtifacts.Add($OutputPath, "dof2dproj.exe")
   }
   finally {
     Pop-Location
