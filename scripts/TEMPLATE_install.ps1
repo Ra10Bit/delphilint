@@ -19,14 +19,14 @@ function Clear-RegistryEntry {
   $RegistryPath = "HKCU:\SOFTWARE\Embarcadero\BDS\$RegistryVersion\Known Packages"
 
   (Get-ItemProperty -Path $RegistryPath).PSObject.Properties `
-    | Where-Object { $_.Value -eq "DelphiLint" } `
-    | ForEach-Object {
-      Remove-Item $_.Name -ErrorAction Continue
-      Remove-ItemProperty -Path $RegistryPath -Name $_.Name -ErrorAction Continue
-      if($?) {
-        Write-Host "Removed existing DelphiLint install at $($_.Name)."
-      }
+  | Where-Object { $_.Value -eq "DelphiLint" } `
+  | ForEach-Object {
+    Remove-Item $_.Name -ErrorAction Continue
+    Remove-ItemProperty -Path $RegistryPath -Name $_.Name -ErrorAction Continue
+    if ($?) {
+      Write-Host "Removed existing DelphiLint install at $($_.Name)."
     }
+  }
 }
 
 function Copy-BuildArtifacts {
@@ -48,12 +48,13 @@ function Get-WebView2 {
   $Archive = [System.IO.Compression.ZipFile]::OpenRead($WebViewZip)
   try {
     $Archive.Entries |
-      Where-Object { $_.FullName -eq "build/native/x86/WebView2Loader.dll" } |
-      ForEach-Object {
-        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($_, (Join-Path $BinFolder "WebView2Loader.dll"), $true)
-        Write-Host "Downloaded $($_.Name) from NuGet."
-      }
-  } finally {
+    Where-Object { $_.FullName -eq "build/native/x86/WebView2Loader.dll" } |
+    ForEach-Object {
+      [System.IO.Compression.ZipFileExtensions]::ExtractToFile($_, (Join-Path $BinFolder "WebView2Loader.dll"), $true)
+      Write-Host "Downloaded $($_.Name) from NuGet."
+    }
+  }
+  finally {
     $Archive.Dispose()
   }
 
