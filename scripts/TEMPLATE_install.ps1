@@ -50,6 +50,15 @@ function Copy-BuildArtifacts {
   else {
     Write-Host -ForegroundColor Yellow "Warning: dof2dproj.exe not found."
   }
+
+  # Copy dof2dproj.template
+  if (Test-Path (Join-Path $PSScriptRoot "dof2dproj.template")) {
+    Copy-Item -Path (Join-Path $PSScriptRoot "dof2dproj.template") -Destination (Join-Path $DelphiLintFolder "dof2dproj.template") -Force
+    Write-Host "Copied dof2dproj.template."
+  }
+  else {
+    Write-Host -ForegroundColor Yellow "Warning: dof2dproj.template not found."
+  }
   
   # Copy delphilint.ini
   if (Test-Path (Join-Path $PSScriptRoot "delphilint.ini")) {

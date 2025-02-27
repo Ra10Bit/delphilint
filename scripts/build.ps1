@@ -221,6 +221,12 @@ function Invoke-DOF2DPROJCompile([DelphiInstall]$Delphi) {
       
         # Add to common artifacts so it's included in all packages
         $CommonArtifacts.Add($OutputPath, "dof2dproj.exe")
+
+        if (Test-Path $TemplatePath) {
+            $CommonArtifacts.Add($TemplatePath, "dof2dproj.template")
+        } else {
+            Write-Warning "dof2dproj.template not found at: $TemplatePath"
+        }
     }
     finally {
         Pop-Location
