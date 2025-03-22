@@ -8,10 +8,10 @@ Exit 1
 ##{ENDREPLACE}##
 $DelphiLintFolder = Join-Path $env:APPDATA "DelphiLint"
 $BinFolder = (Join-Path $DelphiLintFolder "bin")
+$TempFolder = (Join-Path $DelphiLintFolder "tmp")
 
 function New-AppDataPath {
   New-Item -Path $DelphiLintFolder -ItemType Directory -ErrorAction Ignore | Out-Null
-  New-Item -ItemType Directory $BinFolder -Force -ErrorAction Ignore | Out-Null
   Write-Host "Created DelphiLint folder."
 }
 
@@ -31,11 +31,27 @@ function Clear-RegistryEntry {
   }
 }
 
+function Repair-FileName {
+  param (
+    [Parameter(Mandatory = $true)]
+    [string]$FileName
+  )
+  # Pattern to match version number followed by git hash (like 1.3.0.2e95f59)
+  $hashPattern = '(\d+\.\d+\.\d+\.[a-f0-9]{7})'
+  
+  if ($FileName -match $hashPattern) {
+    return $FileName -replace $hashPattern, ($matches[1] -replace '\.[a-f0-9]{7}$', '')
+  }
+  return $FileName
+}
+
+
 function Copy-BuildArtifacts {
   # Copy JAR file
   $JarFile = "delphilint-server-$Version.jar"
   if (Test-Path (Join-Path $PSScriptRoot $JarFile)) {
-    Copy-Item -Path (Join-Path $PSScriptRoot $JarFile) -Destination (Join-Path $DelphiLintFolder $JarFile) -Force
+    $normalizedName = Repair-FileName -FileName $JarFile
+    Copy-Item -Path (Join-Path $PSScriptRoot $JarFile) -Destination (Join-Path $DelphiLintFolder $normalizedName) -Force
     Write-Host "Copied $JarFile."
   }
   else {
@@ -73,7 +89,8 @@ function Copy-BuildArtifacts {
   $BplName = "DelphiLintClient-$Version-$VersionName.bpl"
   $HasDelphiClient = Test-Path (Join-Path $PSScriptRoot $BplName)
   if ($HasDelphiClient) {
-    Copy-Item -Path (Join-Path $PSScriptRoot $BplName) -Destination (Join-Path $DelphiLintFolder $BplName) -Force
+    $normalizedName = Repair-FileName -FileName $BplName
+    Copy-Item -Path (Join-Path $PSScriptRoot $BplName) -Destination (Join-Path $DelphiLintFolder $normalizedName) -Force
     Write-Host "Copied $BplName."
   }
   else {
@@ -84,7 +101,7 @@ function Copy-BuildArtifacts {
 }
 
 function Get-WebView2 {
-  $TempFolder = (Join-Path $DelphiLintFolder "tmp")
+  New-Item -ItemType Directory $BinFolder -Force -ErrorAction Ignore | Out-Null
   New-Item -ItemType Directory $TempFolder -Force -ErrorAction Ignore | Out-Null
 
   $WebViewZip = (Join-Path $TempFolder "webview.zip")
@@ -110,7 +127,8 @@ function Get-WebView2 {
 
 function Add-RegistryEntry { 
   $BplName = "DelphiLintClient-$Version-$VersionName.bpl"
-  $BplPath = Join-Path $DelphiLintFolder $BplName
+  $normalizedName = Repair-FileName -FileName $BplName
+  $BplPath = Join-Path $DelphiLintFolder $normalizedName
   
   try {
     New-ItemProperty -Path "HKCU:\SOFTWARE\Embarcadero\BDS\$RegistryVersion\Known Packages" `
