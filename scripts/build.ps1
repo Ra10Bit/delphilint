@@ -32,7 +32,7 @@
 param(
     [switch]$ShowOutput,
     [switch]$SkipCompanion,
-    [switch]$SkipClient = ($args.Count -eq 0), # ˜˜˜˜˜˜˜˜˜ SkipClient ˜˜ ˜˜˜˜˜˜˜˜˜ ˜˜˜˜ ˜˜˜ ˜˜˜˜˜˜˜˜˜˜
+    [switch]$SkipClient = ($args.Count -eq 0),
     [Parameter(ValueFromRemainingArguments)]
     [string[]]$DelphiVersions
 )
@@ -135,7 +135,7 @@ $StaticVersion = $Version -replace "\+dev.*$", "+dev"
 Write-Host "StaticVersion: $StaticVersion"
 $GitHash = (git rev-parse --short HEAD)  # If you need to keep the git hash
 Write-Host "GitHash: $GitHash"
-# ˜˜˜˜˜˜˜ git ˜˜˜ ˜˜ ˜˜˜˜˜˜, ˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜
+
 $CleanVersion = $Version -replace "\.[a-f0-9]{7}$", ""
 Write-Host "CleanVersion: $CleanVersion"
 
@@ -209,7 +209,6 @@ function Invoke-ServerCompile() {
 
 function Invoke-DOF2DPROJCompile([DelphiInstall]$Delphi) {
     Write-Host "Compiling DOF2DPROJ utility..."
-    $ProjectPath = Join-Path $PSScriptRoot "..\utils\DOF2DPROJ\dof2dproj.dproj"
   
     Push-Location (Join-Path $PSScriptRoot "..\utils\DOF2DPROJ")
     try {
